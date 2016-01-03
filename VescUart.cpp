@@ -158,6 +158,7 @@ bool ProcessReadPacket(uint8_t* message, bldcMeasure& values, int len) {
 	}
 }
 
+
 bool VescUartGetValue(WriteCallback fSend, AvailableCallback fAvailable,
                       ReadCallback fRead, bldcMeasure& values) {
 	uint8_t command[1] = { COMM_GET_VALUES };
