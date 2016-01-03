@@ -22,7 +22,8 @@ along with this program.If not, see <http://www.gnu.org/licenses/>.
 bool UnpackPayload(uint8_t* message, int lenMes, uint8_t* payload, int lenPa);
 bool ProcessReadPacket(uint8_t* message, bldcMeasure& values, int len);
 
-int ReceiveUartMessage(uint8_t* payloadReceived) {
+int ReceiveUartMessage(AvailableCallback fAvailable,
+                       ReadCallback fRead, uint8_t* payloadReceived) {
 
 	//Messages <= 255 start with 2. 2nd byte is length
 	//Messages >255 start with 3. 2nd and 3rd byte is length combined with 1st >>8 and then &0xFF
@@ -33,9 +34,9 @@ int ReceiveUartMessage(uint8_t* payloadReceived) {
 	uint8_t messageReceived[256];
 	int lenPayload = 0;
 
-	while (SERIALIO.available()) {
+	while (fAvailable()) {
 
-		messageReceived[counter++] = SERIALIO.read();
+		messageReceived[counter++] = fRead();
 
 		if (counter == 2) {//case if state of 'counter' with last read 1
 
@@ -59,10 +60,7 @@ int ReceiveUartMessage(uint8_t* payloadReceived) {
 		}
 
 		if (counter == endMessage && messageReceived[endMessage - 1] == 3) {//+1: Because of counter++ state of 'counter' with last read = "endMessage"
-			messageReceived[endMessage] = 0;
-#ifdef DEBUG
-			DEBUGSERIAL.println("End of message reached!");
-#endif			
+			messageReceived[endMessage] = 0;	
 			messageRead = true;
 			break; //Exit if end of message is reached, even if there is still more data in buffer. 
 		}
@@ -88,44 +86,29 @@ bool UnpackPayload(uint8_t* message, int lenMes, uint8_t* payload, int lenPay) {
 	crcMessage = message[lenMes - 3] << 8;
 	crcMessage &= 0xFF00;
 	crcMessage += message[lenMes - 2];
-#ifdef DEBUG
-	DEBUGSERIAL.print("SRC received: "); DEBUGSERIAL.println(crcMessage);
-#endif // DEBUG
-
+    
 	//Extract payload:
 	memcpy(payload, &message[2], message[1]);
 
 	crcPayload = crc16(payload, message[1]);
-#ifdef DEBUG
-	DEBUGSERIAL.print("SRC calc: "); DEBUGSERIAL.println(crcPayload);
-#endif
-	if (crcPayload == crcMessage)
-	{
-#ifdef DEBUG
-		DEBUGSERIAL.print("Received: "); SerialPrint(message, lenMes); DEBUGSERIAL.println();
-		DEBUGSERIAL.print("Payload :      "); SerialPrint(payload, message[1] - 1); DEBUGSERIAL.println();
-#endif // DEBUG
-
+	if (crcPayload == crcMessage) {
 		return true;
 	}
-	else
-	{
+	else {
 		return false;
 	}
 }
 
-int PackSendPayload(uint8_t* payload, int lenPay) {
+int PackSendPayload(WriteCallback fSend, uint8_t* payload, int lenPay) {
 	uint16_t crcPayload = crc16(payload, lenPay);
 	int count = 0;
 	uint8_t messageSend[256];
 
-	if (lenPay <= 256)
-	{
+	if (lenPay <= 256) {
 		messageSend[count++] = 2;
 		messageSend[count++] = lenPay;
 	}
-	else
-	{
+	else {
 		messageSend[count++] = 3;
 		messageSend[count++] = (uint8_t)(lenPay >> 8);
 		messageSend[count++] = (uint8_t)(lenPay & 0xFF);
@@ -137,12 +120,9 @@ int PackSendPayload(uint8_t* payload, int lenPay) {
 	messageSend[count++] = (uint8_t)(crcPayload & 0xFF);
 	messageSend[count++] = 3;
 	messageSend[count] = NULL;
-	//Sending package
-	SERIALIO.write(messageSend, count);
-#ifdef DEBUG
-	DEBUGSERIAL.print("UART package send: "); SerialPrint(messageSend, count);
 
-#endif // DEBUG
+	//Sending package
+	fSend(messageSend, count);
 
 	//Returns number of send bytes
 	return count;
@@ -157,97 +137,40 @@ bool ProcessReadPacket(uint8_t* message, bldcMeasure& values, int len) {
 	message++;//Eliminates the message id
 	len--;
 
-	switch (packetId)
-	{
-	case COMM_GET_VALUES:
-		ind = 14; //Skipped the first 14 bit.
-		values.avgMotorCurrent = buffer_get_float32(message, 100.0, &ind);
-		values.avgInputCurrent = buffer_get_float32(message, 100.0, &ind);
-		values.dutyCycleNow = buffer_get_float16(message, 1000.0, &ind);
-		values.rpm = buffer_get_int32(message, &ind);
-		values.inpVoltage = buffer_get_float16(message, 10.0, &ind);
-		values.ampHours = buffer_get_float32(message, 10000.0, &ind);
-		values.ampHoursCharged = buffer_get_float32(message, 10000.0, &ind);
-		ind += 8; //Skip 9 bit
-		values.tachometer = buffer_get_int32(message, &ind);
-		values.tachometerAbs = buffer_get_int32(message, &ind);
-		return true;
-		break;
-
-	default:
-		return false;
-		break;
+	switch (packetId) {
+        case COMM_GET_VALUES:
+            ind = 14; //Skipped the first 14 bit.
+            values.avgMotorCurrent = buffer_get_float32(message, 100.0, &ind);
+            values.avgInputCurrent = buffer_get_float32(message, 100.0, &ind);
+            values.dutyCycleNow = buffer_get_float16(message, 1000.0, &ind);
+            values.rpm = buffer_get_int32(message, &ind);
+            values.inpVoltage = buffer_get_float16(message, 10.0, &ind);
+            values.ampHours = buffer_get_float32(message, 10000.0, &ind);
+            values.ampHoursCharged = buffer_get_float32(message, 10000.0, &ind);
+            ind += 8; //Skip 9 bit
+            values.tachometer = buffer_get_int32(message, &ind);
+            values.tachometerAbs = buffer_get_int32(message, &ind);
+            return true;
+            break;
+        default:
+            return false;
+            break;
 	}
-
 }
 
-bool VescUartGetValue(bldcMeasure& values) {
+bool VescUartGetValue(WriteCallback fSend, AvailableCallback fAvailable,
+                      ReadCallback fRead, bldcMeasure& values) {
 	uint8_t command[1] = { COMM_GET_VALUES };
 	uint8_t payload[256];
-	PackSendPayload(command, 1);
+	PackSendPayload(fSend, command, 1);
 	delay(100); //needed, otherwise data is not read
-	int lenPayload = ReceiveUartMessage(payload);
+	int lenPayload = ReceiveUartMessage(fAvailable, fRead, payload);
 	if (lenPayload > 0) {
 		bool read = ProcessReadPacket(payload, values, lenPayload); //returns true if sucessfull
 		return read;
 	}
-	else
-	{
+	else {
 		return false;
 	}
 }
 
-void VescUartSetCurrent(float current) {
-	int32_t index = 0;
-	uint8_t payload[5];
-		
-	payload[index++] = COMM_SET_CURRENT ;
-	buffer_append_int32(payload, (int)(current * 1000), &index);
-	PackSendPayload(payload, 5);
-}
-
-void VescUartSetCurrentBrake(float brakeCurrent) {
-	int32_t index = 0;
-	uint8_t payload[5];
-
-	payload[index++] = COMM_SET_CURRENT_BRAKE;
-	buffer_append_int32(payload, (int)(brakeCurrent * 1000), &index);
-	PackSendPayload(payload, 5);
-
-}
-
-void VescUartSetNunchukValues(remotePackage& data) {
-	int32_t ind = 0;
-	uint8_t payload[5];
-	payload[ind++] = COMM_SET_CHUCK_DATA;
-	payload[ind++] = data.valXJoy;
-	payload[ind++] = data.valYJoy;
-	buffer_append_bool(payload, data.valLowerButton, &ind);
-	buffer_append_bool(payload, data.valUpperButton, &ind);
-
-	PackSendPayload(payload, 5);
-}
-
-void SerialPrint(uint8_t* data, int len) {
-
-	//	DEBUGSERIAL.print("Data to display: "); DEBUGSERIAL.println(sizeof(data));
-
-	for (int i = 0; i <= len; i++)
-	{
-		DEBUGSERIAL.print(data[i]);
-		DEBUGSERIAL.print(" ");
-	}
-	DEBUGSERIAL.println("");
-}
-
-void SerialPrint(const bldcMeasure& values) {
-	DEBUGSERIAL.print("avgMotorCurrent: "); DEBUGSERIAL.println(values.avgMotorCurrent);
-	DEBUGSERIAL.print("avgInputCurrent: "); DEBUGSERIAL.println(values.avgInputCurrent);
-	DEBUGSERIAL.print("dutyCycleNow: "); DEBUGSERIAL.println(values.dutyCycleNow);
-	DEBUGSERIAL.print("rpm: "); DEBUGSERIAL.println(values.rpm);
-	DEBUGSERIAL.print("inputVoltage: "); DEBUGSERIAL.println(values.inpVoltage);
-	DEBUGSERIAL.print("ampHours: "); DEBUGSERIAL.println(values.ampHours);
-	DEBUGSERIAL.print("ampHoursCharges: "); DEBUGSERIAL.println(values.ampHoursCharged);
-	DEBUGSERIAL.print("tachometer: "); DEBUGSERIAL.println(values.tachometer);
-	DEBUGSERIAL.print("tachometerAbs: "); DEBUGSERIAL.println(values.tachometerAbs);
-}

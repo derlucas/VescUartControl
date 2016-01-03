@@ -1,54 +1,24 @@
-/*
- Name:		VescUartSample.ino
- Created:	9/26/2015 10:12:38 PM
- Author:	AC
-*/
+#include "VescUart.h"
+#include <SoftwareSerial.h>
 
-// the setup function runs once when you press reset or power the board
-// To use VescUartControl stand alone you need to define a config.h file, that should contain the Serial or you have to comment the line
-// #include Config.h out in VescUart.h
+SoftwareSerial vescUart (10, 11);
 
-//Include libraries copied from VESC
- #include "VescUart.h"
-#include "datatypes.h"
-
-
-#define DEBUG
-
-void setup() {
-	
-	//Setup UART port
-	Serial1.begin(115200);
-#ifdef DEBUG
-	//SEtup debug port
-	Serial.begin(115200);
-	#endif
-}
+// callback functions for VESC Uart library
+void fWrite (const uint8_t *what, const size_t lenght) { vescUart.write(what, lenght); }
+int fAvailable () { return vescUart.available(); }
+int fRead () { return vescUart.read(); }
 
 struct bldcMeasure measuredValues;
-	
-// the loop function runs over and over again until power down or reset
-void loop() {
-	//int len=0;
-	//len = ReceiveUartMessage(message);
-	//if (len > 0)
-	//{
-	//	len = PackSendPayload(message, len);
-	//	len = 0;
-	//}
 
-	if (VescUartGetValue(measuredValues)) {
-		SerialPrint(measuredValues);
-		
-	}
-	else
-	{
-		Serial.println("Failed to get data!");
-	}
-	
+void setup() {
+  // put your setup code here, to run once:
+  vescUart.begin(19200);
+
+  VescUartGetValue(fWrite, fAvailable, fRead, measuredValues);
+
 }
 
+void loop() {
+  // put your main code here, to run repeatedly:
 
-
-
-
+}
