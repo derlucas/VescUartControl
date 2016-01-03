@@ -364,7 +364,7 @@ typedef enum {
 //	float duty;
 //} can_status_msg;
 
-typedef struct {
+/*typedef struct {
 	uint8_t js_x;
 	uint8_t js_y;
 	bool bt_c;
@@ -372,6 +372,7 @@ typedef struct {
 	bool bt_push;
 	float vbat;
 } mote_state;
+*/
 
 //typedef enum {
 //	MOTE_PACKET_BATT_LEVEL = 0,
@@ -396,7 +397,7 @@ struct bldcMeasure {
 }	;
 
 //Define remote Package
-
+/*
 struct remotePackage {
 
 	int		valXJoy;
@@ -405,4 +406,6 @@ struct remotePackage {
 	boolean	valLowerButton;
 
 };
+*/
+
 #endif /* DATATYPES_H_ */

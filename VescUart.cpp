@@ -102,7 +102,7 @@ bool UnpackPayload(uint8_t* message, int lenMes, uint8_t* payload, int lenPay) {
 int PackSendPayload(WriteCallback fSend, uint8_t* payload, int lenPay) {
 	uint16_t crcPayload = crc16(payload, lenPay);
 	int count = 0;
-	uint8_t messageSend[256];
+	uint8_t messageSend[256];   // possible buffer overflow here
 
 	if (lenPay <= 256) {
 		messageSend[count++] = 2;
@@ -113,7 +113,7 @@ int PackSendPayload(WriteCallback fSend, uint8_t* payload, int lenPay) {
 		messageSend[count++] = (uint8_t)(lenPay >> 8);
 		messageSend[count++] = (uint8_t)(lenPay & 0xFF);
 	}
-	memcpy(&messageSend[count], payload, lenPay);
+	memcpy(&messageSend[count], payload, lenPay); // possible buffer overflow here
 
 	count += lenPay;
 	messageSend[count++] = (uint8_t)(crcPayload >> 8);
@@ -134,12 +134,12 @@ bool ProcessReadPacket(uint8_t* message, bldcMeasure& values, int len) {
 	int32_t ind = 0;
 
 	packetId = (COMM_PACKET_ID)message[0];
-	message++;//Eliminates the message id
+	message++;  // skip the message id byte
 	len--;
 
 	switch (packetId) {
         case COMM_GET_VALUES:
-            ind = 14; //Skipped the first 14 bit.
+            ind = 14; // skip the first 14 bytes
             values.avgMotorCurrent = buffer_get_float32(message, 100.0, &ind);
             values.avgInputCurrent = buffer_get_float32(message, 100.0, &ind);
             values.dutyCycleNow = buffer_get_float16(message, 1000.0, &ind);
@@ -147,7 +147,7 @@ bool ProcessReadPacket(uint8_t* message, bldcMeasure& values, int len) {
             values.inpVoltage = buffer_get_float16(message, 10.0, &ind);
             values.ampHours = buffer_get_float32(message, 10000.0, &ind);
             values.ampHoursCharged = buffer_get_float32(message, 10000.0, &ind);
-            ind += 8; //Skip 9 bit
+            ind += 8; // skip 9 bytes
             values.tachometer = buffer_get_int32(message, &ind);
             values.tachometerAbs = buffer_get_int32(message, &ind);
             return true;
@@ -164,11 +164,13 @@ bool VescUartGetValue(WriteCallback fSend, AvailableCallback fAvailable,
 	uint8_t command[1] = { COMM_GET_VALUES };
 	uint8_t payload[256];
 	PackSendPayload(fSend, command, 1);
-	delay(100); //needed, otherwise data is not read
+	
+    delay(10); // let the VESC some time to answer
+    
 	int lenPayload = ReceiveUartMessage(fAvailable, fRead, payload);
-	if (lenPayload > 0) {
-		bool read = ProcessReadPacket(payload, values, lenPayload); //returns true if sucessfull
-		return read;
+	
+    if (lenPayload > 0) {
+		return ProcessReadPacket(payload, values, lenPayload);
 	}
 	else {
 		return false;
